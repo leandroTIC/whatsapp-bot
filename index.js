@@ -1,56 +1,54 @@
-import makeWASocket, { useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from "@adiwajshing/baileys";
+import makeWASocket, { useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 // Caminho do arquivo de sessão
-const SESSION_FILE = path.resolve('./session.json');
-
-// Cria ou carrega a sessão
+const SESSION_FILE = path.resolve("./auth_state.json");
 const { state, saveState } = useSingleFileAuthState(SESSION_FILE);
 
-// Função principal do bot
 async function startBot() {
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`Usando versão do WhatsApp: ${version.join('.')}, Última versão? ${isLatest}`);
+    const { version } = await fetchLatestBaileysVersion();
+    console.log(`Conectando com WhatsApp versão ${version.join(".")}`);
 
     const sock = makeWASocket({
         auth: state,
         version,
-        printQRInTerminal: true, // QR no terminal, só na primeira vez
+        printQRInTerminal: true
     });
 
     // Salva a sessão automaticamente
-    sock.ev.on('creds.update', saveState);
+    sock.ev.on("creds.update", saveState);
 
     // Atualizações de conexão
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on("connection.update", (update) => {
         const { connection, lastDisconnect } = update;
-        if (connection === 'close') {
-            const reason = new Boom(lastDisconnect?.error)?.output.statusCode;
-            console.log('Conexão fechada, motivo:', reason);
-            if (reason !== 401) startBot(); // reconecta se não for logout
-        } else if (connection === 'open') {
-            console.log('Bot conectado com sucesso!');
+        if (connection === "close") {
+            const statusCode = new Boom(lastDisconnect?.error)?.output.statusCode;
+            console.log("Conexão fechada, statusCode:", statusCode);
+            if (statusCode !== DisconnectReason.loggedOut) {
+                startBot(); // reconectar automaticamente
+            } else {
+                console.log("Você foi desconectado, scan o QR novamente.");
+            }
+        } else if (connection === "open") {
+            console.log("Bot conectado com sucesso!");
         }
     });
 
-    // Recebe mensagens
-    sock.ev.on('messages.upsert', async (messageUpdate) => {
-        const messages = messageUpdate.messages;
-        if (!messages || messages.length === 0) return;
+    // Receber mensagens
+    sock.ev.on("messages.upsert", async (m) => {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
 
-        const msg = messages[0];
-        if (!msg.message) return;
-
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        const text = msg.message.conversation || msg.message?.extendedTextMessage?.text;
         const from = msg.key.remoteJid;
 
         console.log(`Mensagem de ${from}: ${text}`);
 
-        // Resposta simples de exemplo
-        if (text?.toLowerCase() === 'ping') {
-            await sock.sendMessage(from, { text: 'pong' });
+        // Resposta simples
+        if (text?.toLowerCase() === "ping") {
+            await sock.sendMessage(from, { text: "pong" });
         }
     });
 }
