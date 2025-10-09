@@ -8,11 +8,11 @@ const PORT = process.env.PORT || 10000
 let sock
 let lastQR = null
 
-// Array de destinatários
 const numeros = [
-  '77981434412@s.whatsapp.net',
-  '77981145420@s.whatsapp.net'
+  '5577981434412@s.whatsapp.net', // sua esposa
+  '5577981145420@s.whatsapp.net'  // outro número
 ]
+
 
 // Mensagem a ser enviada
 const mensagem = 'Olá 👋 sua mensagem foi enviada com sucesso!'
