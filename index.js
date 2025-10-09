@@ -1,78 +1,59 @@
-import express from 'express'
-import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys'
-import qrcode from 'qrcode'
+import makeWASocket, { useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from "@adiwajshing/baileys";
+import { Boom } from "@hapi/boom";
+import fs from 'fs';
+import path from 'path';
 
-const app = express()
-const PORT = process.env.PORT || 10000
+// Caminho do arquivo de sessão
+const SESSION_FILE = path.resolve('./session.json');
 
-let sock
-let lastQR = null
+// Cria ou carrega a sessão
+const { state, saveState } = useSingleFileAuthState(SESSION_FILE);
 
-const numeros = [
-  '5577981434412@s.whatsapp.net', // sua esposa
-  '5577981145420@s.whatsapp.net'  // outro número
-]
-
-
-// Mensagem a ser enviada
-const mensagem = 'Olá 👋 sua mensagem foi enviada com sucesso!'
-
-// Rota para exibir QR no navegador
-app.get('/qrcode', async (req, res) => {
-  if (!lastQR) return res.send('QR Code ainda não gerado. Aguarde alguns segundos.')
-  const qrImg = await qrcode.toDataURL(lastQR)
-  res.send(`<h2>Escaneie o QR Code com o WhatsApp</h2><img src="${qrImg}" />`)
-})
-
-// Rota de teste do bot
-app.get('/', (req, res) => res.send('Bot WhatsApp rodando ✅'))
-
-app.listen(PORT, () => {
-  console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`)
-  startBot()
-})
-
+// Função principal do bot
 async function startBot() {
-  try {
-    const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`Usando versão do WhatsApp: ${version.join('.')}, Última versão? ${isLatest}`);
 
-    sock = makeWASocket({
-      auth: state
-    })
+    const sock = makeWASocket({
+        auth: state,
+        version,
+        printQRInTerminal: true, // QR no terminal, só na primeira vez
+    });
 
-    sock.ev.on('creds.update', saveCreds)
+    // Salva a sessão automaticamente
+    sock.ev.on('creds.update', saveState);
 
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, qr } = update
+    // Atualizações de conexão
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
+        if (connection === 'close') {
+            const reason = new Boom(lastDisconnect?.error)?.output.statusCode;
+            console.log('Conexão fechada, motivo:', reason);
+            if (reason !== 401) startBot(); // reconecta se não for logout
+        } else if (connection === 'open') {
+            console.log('Bot conectado com sucesso!');
+        }
+    });
 
-      if (qr) {
-        lastQR = qr // salva o QR para a rota
-        console.log('QR Code gerado! Acesse /qrcode no navegador para escanear.')
-      }
+    // Recebe mensagens
+    sock.ev.on('messages.upsert', async (messageUpdate) => {
+        const messages = messageUpdate.messages;
+        if (!messages || messages.length === 0) return;
 
-      if (connection === 'open') {
-        console.log('✅ Conectado ao WhatsApp!')
-        enviarMensagem()
-      } else if (connection === 'close') {
-        console.log('⚠ Conexão caiu, tentando reconectar...')
-        setTimeout(startBot, 5000) // espera 5s antes de reconectar
-      }
-    })
-  } catch (err) {
-    console.error('❌ Erro ao iniciar o bot:', err)
-  }
+        const msg = messages[0];
+        if (!msg.message) return;
+
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        const from = msg.key.remoteJid;
+
+        console.log(`Mensagem de ${from}: ${text}`);
+
+        // Resposta simples de exemplo
+        if (text?.toLowerCase() === 'ping') {
+            await sock.sendMessage(from, { text: 'pong' });
+        }
+    });
 }
 
-// Função para enviar mensagem para todos os números
-function enviarMensagem() {
-  if (!sock || !sock.user) {
-    console.log('WhatsApp não conectado ainda.')
-    return
-  }
-
-  numeros.forEach(numero => {
-    sock.sendMessage(numero, { text: mensagem })
-      .then(() => console.log(`✅ Mensagem enviada para ${numero.replace('@s.whatsapp.net','')}`))
-      .catch(err => console.error(`❌ Erro ao enviar mensagem para ${numero}:`, err))
-  })
-}
+// Inicia o bot
+startBot();
