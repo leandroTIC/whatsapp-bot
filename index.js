@@ -1,4 +1,4 @@
-import express from 'express'
+ legalimport express from 'express'
 import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys'
 import qrcode from 'qrcode'
 
@@ -52,8 +52,8 @@ async function startBot() {
 
 // Envia mensagem para o número especificado
 function enviarMensagem() {
-  const numero = '5577988556030@s.whatsapp.net' // Seu número
-  const mensagem = 'Olá Leandro 👋 Esta é uma mensagem automática de teste!'
+  const numero = '5577981434412@s.whatsapp.net' // Seu número
+  const mensagem = 'Olá Beatriz 👋 seu coração foi capturado com sucesso!!'
 
   sock.sendMessage(numero, { text: mensagem })
     .then(() => console.log('✅ Mensagem enviada para 77988556030'))
