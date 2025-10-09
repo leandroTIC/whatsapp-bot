@@ -1,19 +1,25 @@
 {
   "name": "whatsapp-bot",
   "version": "1.0.0",
-  "description": "Bot WhatsApp automatizado com Baileys + Express para deploy gratuito no Render",
-  "main": "index.js",
+  "description": "Bot WhatsApp automatizado com Baileys",
   "type": "module",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.8",
-    "express": "^4.19.2"
+    "@whiskeysockets/baileys": "^6.0.10",
+    "express": "^4.18.2",
+    "qrcode": "^1.5.1"
   },
   "engines": {
-    "node": ">=18 <23"
+    "node": "22.x"
   },
-  "author": "",
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "baileys"
+  ],
+  "author": "Leandro Rocha",
   "license": "MIT"
 }
