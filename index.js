@@ -6,17 +6,15 @@ import {
     fetchLatestBaileysVersion,
     useMultiFileAuthState
 } from '@whiskeysockets/baileys';
-import fs from 'fs';
-import path from 'path';
 
 const PORT = process.env.PORT || 10000;
 const app = express();
 
-// Pasta para guardar sessão do WhatsApp
+// Pasta onde fica a sessão autenticada
 const authFolder = './auth_info_baileys';
 let sock;
 
-// Função principal para iniciar o WhatsApp
+// 🧠 Função principal de inicialização
 async function startWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     const { version } = await fetchLatestBaileysVersion();
@@ -27,13 +25,13 @@ async function startWhatsApp() {
         printQRInTerminal: false
     });
 
-    // Atualiza credenciais sempre que mudar
     sock.ev.on('creds.update', saveCreds);
 
-    // Atualização de conexão (gera QR, reconecta, etc)
+    // Conexão com WhatsApp
     sock.ev.on('connection.update', (update) => {
         const { connection, qr, lastDisconnect } = update;
 
+        // 👉 Gera QR e disponibiliza na rota /qrcode
         if (qr) {
             console.log('⚡ QR Code gerado! Acesse /qrcode no navegador para escanear.');
             app.get('/qrcode', async (req, res) => {
@@ -46,29 +44,32 @@ async function startWhatsApp() {
             });
         }
 
+        // 👉 Se cair, tenta reconectar
         if (connection === 'close') {
             const reason = (lastDisconnect?.error)?.output?.statusCode;
             console.log('❌ Conexão caiu, tentando reconectar...', reason);
             startWhatsApp();
         }
 
+        // 👉 Conectou com sucesso
         if (connection === 'open') {
             console.log('✅ WhatsApp conectado com sucesso!');
+            console.log('📲 Número conectado:', sock.user?.id || '(desconhecido)');
 
-            // Envio automático de teste
+            // Envio de mensagem de teste após 3s
             setTimeout(async () => {
                 try {
                     await sendMessage('5577981434412', 'Oi, tudo bem? Teste automático ✅');
                     console.log('📨 Mensagem de teste enviada para 5577981434412');
                 } catch (err) {
-                    console.error('Erro ao enviar mensagem de teste:', err);
+                    console.error('❌ Erro ao enviar mensagem de teste:', err);
                 }
             }, 3000);
         }
     });
 }
 
-// Função genérica para enviar mensagens
+// 📩 Função para enviar mensagem
 async function sendMessage(number, message) {
     if (!sock || !sock.user) {
         console.log('⚠️ WhatsApp ainda não está conectado.');
@@ -83,8 +84,9 @@ async function sendMessage(number, message) {
     console.log(`✅ Mensagem enviada para ${number}`);
 }
 
-// Rotas HTTP básicas
+// 🌐 Rotas HTTP básicas
 app.get('/', (req, res) => res.send('🤖 Bot WhatsApp rodando!'));
+
 app.get('/send', async (req, res) => {
     const { number, msg } = req.query;
     if (!number || !msg) return res.send('Use /send?number=55NUMERO&msg=MENSAGEM');
@@ -93,7 +95,7 @@ app.get('/send', async (req, res) => {
     res.send(`Mensagem enviada para ${number}`);
 });
 
-// Inicializa servidor e WhatsApp
+// 🚀 Inicia servidor + WhatsApp
 app.listen(PORT, async () => {
     console.log(`🚀 Servidor HTTP ativo na porta ${PORT}`);
     await startWhatsApp();
