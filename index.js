@@ -59,8 +59,8 @@ async function startWhatsApp() {
             // Envio de mensagem de teste após 3s
             setTimeout(async () => {
                 try {
-                    await sendMessage('5577981434412', 'Oi, tudo bem? Teste automático ✅');
-                    console.log('📨 Mensagem de teste enviada para 5577981434412');
+                    await sendMessage('5577881434412', 'Oi, tudo bem? Teste automático ✅');
+                    console.log('📨 Mensagem de teste enviada para 557781434412');
                 } catch (err) {
                     console.error('❌ Erro ao enviar mensagem de teste:', err);
                 }
