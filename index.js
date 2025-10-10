@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "fs";
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
+// Importamos jidNormalizedUser para limpar o JID do bot (remover o ':26', etc.)
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, jidNormalizedUser } from "@whiskeysockets/baileys";
 import qrcode from "qrcode";
 
 const app = express();
@@ -8,7 +9,8 @@ const PORT = process.env.PORT || 10000;
 
 let sock;       // Conexão com o WhatsApp
 let lastQR = null; // Guarda o QR gerado para exibir no navegador
-let botJid = null; // Armazena o JID (número) do bot após a conexão
+// botJid agora guarda o JID LIMPO (ex: 5577988556030@s.whatsapp.net)
+let botJid = null; 
 
 // 🔸 Garante que a pasta de autenticação existe
 const AUTH_FOLDER = './auth';
@@ -27,7 +29,7 @@ app.get("/qrcode", async (req, res) => {
 });
 
 // 🟡 Rota de status
-app.get("/", (req, res) => res.send(`🤖 Bot WhatsApp rodando ✅ - Número conectado: ${botJid || 'Aguardando conexão'}`));
+app.get("/", (req, res) => res.send(`🤖 Bot WhatsApp rodando ✅ - Número conectado (Normalizado): ${botJid || 'Aguardando conexão'}`));
 
 // 🟢 Inicializa servidor HTTP
 app.listen(PORT, () => {
@@ -55,11 +57,11 @@ async function startBot() {
     }
 
     if (connection === "open") {
-      // Captura o JID (Remetente) do número que escaneou o QR Code
-      botJid = sock.user.id; 
-      console.log(`✅ Conectado ao WhatsApp com sucesso! REMETENTE: ${botJid}`);
+      // 💡 CORREÇÃO: Usamos jidNormalizedUser para garantir que botJid
+      // tenha o formato 55xxxxxxxxxxx@s.whatsapp.net, igual aos destinatários.
+      botJid = jidNormalizedUser(sock.user.id); 
+      console.log(`✅ Conectado ao WhatsApp com sucesso! REMETENTE NORMALIZADO: ${botJid}`);
       
-      // Envia as mensagens automáticas na primeira conexão
       if (isNewLogin) {
         enviarMensagensAutomaticas();
       } else {
@@ -82,27 +84,25 @@ async function startBot() {
 async function enviarMensagensAutomaticas() {
   
   // 🔴 LISTA DE DESTINATÁRIOS
-  // **MUITO IMPORTANTE:** Use números COMPLETAMENTE DIFERENTES do bot (+5577988556030).
-  // Formato: DDI + DDD + Número + @s.whatsapp.net
-  
+  // Por favor, **SUBSTITUA** esses exemplos pelos números REAIS
+  // dos seus destinatários, garantindo que não é o número do bot.
   const destinatarios = [
-    "5577981434412@s.whatsapp.net", // DESTINATÁRIO 1 (Troque por um número real que não seja o bot)
-    "5577981145420@s.whatsapp.net"  // DESTINATÁRIO 2 (Troque por outro número real)
+    "5577981434412@s.whatsapp.net", // Exemplo de um destinatário
+    "5577981145420@s.whatsapp.net"  // Exemplo de outro destinatário
   ];
 
   const mensagem = "👋 Esta é uma mensagem automática enviada pelo BOT oficial +55 77 98855-6030 ✅";
   
-  console.log(`\n--- INICIANDO ENVIO DE MENSAGENS (Remetente: ${botJid}) ---`);
+  console.log(`\n--- INICIANDO ENVIO DE MENSAGENS (Remetente Normalizado: ${botJid}) ---`);
 
   for (const numero of destinatarios) {
-    // ✅ VERIFICAÇÃO DE SEGURANÇA: Garante que não envia para o próprio bot
+    // ✅ VERIFICAÇÃO DE SEGURANÇA: A comparação agora é confiável.
     if (numero === botJid) {
       console.warn(`⚠️ Pulando envio. O próprio número do BOT (${numero}) está na lista de destinatários.`);
       continue; 
     }
     
     try {
-      // O sock.sendMessage usa o 'botJid' (Remetente) para enviar para 'numero' (Destinatário)
       await sock.sendMessage(numero, { text: mensagem });
       console.log(`📤 Mensagem enviada com sucesso para o DESTINATÁRIO: ${numero}`);
     } catch (err) {
