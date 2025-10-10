@@ -4,22 +4,23 @@ import makeWASocket, { useMultiFileAuthState, jidNormalizedUser } from "@whiskey
 import fs from "fs";
 
 const app = express();
-app.use(express.json()); // Para ler JSON do POST
-const PORT = process.env.PORT || 10001; // Porta separada do index.js
+app.use(express.json());
 
-// Pasta de autenticação (mesma do index.js)
+const PORT = process.env.PORT || 10001; // porta do Render
+
+// Pasta de autenticação
 const AUTH_FOLDER = './auth';
 if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER);
 
 let sock;
 let botJid = null;
 
-// Inicializa o bot WhatsApp
+// Inicializa o bot
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
     sock = makeWASocket({
-        printQRInTerminal: true, // Mostra QR no terminal para debug
+        printQRInTerminal: false,
         auth: state,
         browser: ["Ubuntu", "Chrome", "22.04.4"],
     });
@@ -27,49 +28,50 @@ async function startBot() {
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", (update) => {
-        const { connection, lastDisconnect, isNewLogin } = update;
+        const { connection, qr, isNewLogin, lastDisconnect } = update;
 
-        console.log("🔄 update.connection:", connection);
+        if (qr) {
+            console.log("📱 QR Code gerado! Escaneie para conectar o bot.");
+        }
 
         if (connection === "open") {
             botJid = jidNormalizedUser(sock.user.id);
             console.log(`✅ Bot conectado: ${botJid}`);
         } else if (connection === "close") {
-            console.log("⚠️ Conexão caiu:", lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error);
-            startBot(); // tenta reconectar
+            console.log("⚠️ Conexão caiu:", lastDisconnect?.error?.output?.statusCode || "desconhecido");
+            startBot();
         }
     });
 }
 
-// Chama a inicialização do bot
 startBot();
 
 // Rota POST para enviar mensagem
 app.post("/send-message", async (req, res) => {
-    console.log("📥 Requisição recebida do PHP:", req.body); // <<< DEBUG
+    console.log("🔹 Recebido POST:", req.body);
 
     const { numero, mensagem } = req.body;
 
     if (!numero || !mensagem) {
-        console.log("⚠️ Dados inválidos:", req.body);
         return res.status(400).json({ error: "Número e mensagem são obrigatórios" });
     }
 
     if (!sock || !botJid) {
-        console.log("⚠️ Bot ainda não conectado");
-        return res.status(503).json({ error: "Bot ainda não conectado" });
+        return res.status(503).json({ error: "Bot ainda não conectado. Tente novamente em alguns segundos." });
     }
 
     try {
-        const jid = `${numero.replace(/\D/g, '')}@s.whatsapp.net`; // remove caracteres não numéricos
-        console.log(`📤 Tentando enviar para: ${jid}, mensagem: "${mensagem}"`); // <<< DEBUG
+        const jid = `${numero.replace(/\D/g, '')}@s.whatsapp.net`;
+        console.log(`📤 Tentando enviar para ${jid}: "${mensagem}"`);
         await sock.sendMessage(jid, { text: mensagem });
-        console.log("✅ Mensagem enviada com sucesso!");
+        console.log(`✅ Mensagem enviada para ${jid}`);
         return res.json({ success: true, numero: jid, mensagem });
     } catch (err) {
-        console.error("❌ Erro ao enviar mensagem:", err); // <<< DEBUG completo
-        return res.status(500).json({ error: err.message, stack: err.stack });
+        console.error("❌ Erro ao enviar mensagem:", err);
+        return res.status(500).json({ error: err.message });
     }
 });
+
+app.get("/", (req, res) => res.send("🤖 Bot WhatsApp rodando!"));
 
 app.listen(PORT, () => console.log(`🌐 API de envio rodando na porta ${PORT}`));
