@@ -1,78 +1,100 @@
 import express from 'express';
 import qrcode from 'qrcode';
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import {
+    makeWASocket,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    useMultiFileAuthState
+} from '@whiskeysockets/baileys';
+import fs from 'fs';
+import path from 'path';
 
 const PORT = process.env.PORT || 10000;
 const app = express();
 
+// Pasta para guardar sessão do WhatsApp
+const authFolder = './auth_info_baileys';
 let sock;
-let qrCodeAtual = null;
 
-// Função para iniciar conexão com WhatsApp
+// Função principal para iniciar o WhatsApp
 async function startWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState('./auth_info_baileys');
-  const { version } = await fetchLatestBaileysVersion();
+    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+    const { version } = await fetchLatestBaileysVersion();
 
-  sock = makeWASocket({
-    auth: state,
-    version,
-    printQRInTerminal: false
-  });
+    sock = makeWASocket({
+        auth: state,
+        version,
+        printQRInTerminal: false
+    });
 
-  sock.ev.on('creds.update', saveCreds);
+    // Atualiza credenciais sempre que mudar
+    sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, qr, lastDisconnect } = update;
+    // Atualização de conexão (gera QR, reconecta, etc)
+    sock.ev.on('connection.update', (update) => {
+        const { connection, qr, lastDisconnect } = update;
 
-    if (qr) {
-      qrCodeAtual = qr;
-      console.log('✅ QR Code gerado! Acesse /qrcode no navegador para escanear.');
-    }
+        if (qr) {
+            console.log('⚡ QR Code gerado! Acesse /qrcode no navegador para escanear.');
+            app.get('/qrcode', async (req, res) => {
+                try {
+                    const qrImage = await qrcode.toDataURL(qr);
+                    res.send(`<img src="${qrImage}" />`);
+                } catch (err) {
+                    res.send('Erro ao gerar QR Code');
+                }
+            });
+        }
 
-    if (connection === 'close') {
-      const reason = (lastDisconnect?.error)?.output?.statusCode;
-      console.log('⚠ Conexão caiu, tentando reconectar...', reason);
-      startWhatsApp();
-    }
+        if (connection === 'close') {
+            const reason = (lastDisconnect?.error)?.output?.statusCode;
+            console.log('❌ Conexão caiu, tentando reconectar...', reason);
+            startWhatsApp();
+        }
 
-    if (connection === 'open') {
-      console.log('✅ WhatsApp conectado com sucesso!');
-    }
-  });
+        if (connection === 'open') {
+            console.log('✅ WhatsApp conectado com sucesso!');
+
+            // Envio automático de teste
+            setTimeout(async () => {
+                try {
+                    await sendMessage('5577981434412', 'Oi, tudo bem? Teste automático ✅');
+                    console.log('📨 Mensagem de teste enviada para 5577981434412');
+                } catch (err) {
+                    console.error('Erro ao enviar mensagem de teste:', err);
+                }
+            }, 3000);
+        }
+    });
 }
 
-// Função para enviar mensagem
+// Função genérica para enviar mensagens
 async function sendMessage(number, message) {
-  if (!sock || !sock.user) {
-    console.log('❌ WhatsApp não conectado ainda.');
-    return;
-  }
+    if (!sock || !sock.user) {
+        console.log('⚠️ WhatsApp ainda não está conectado.');
+        return;
+    }
 
-  const jid = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
-  await sock.sendMessage(jid, { text: message });
-  console.log(`📩 Mensagem enviada para ${number}`);
+    const jid = number.includes('@s.whatsapp.net')
+        ? number
+        : `${number}@s.whatsapp.net`;
+
+    await sock.sendMessage(jid, { text: message });
+    console.log(`✅ Mensagem enviada para ${number}`);
 }
 
-// Rota para exibir o QR Code no navegador
-app.get('/qrcode', async (req, res) => {
-  if (!qrCodeAtual) return res.send('QR Code ainda não foi gerado. Aguarde...');
-  const qrImage = await qrcode.toDataURL(qrCodeAtual);
-  res.send(`<h2>Escaneie com o WhatsApp</h2><img src="${qrImage}" />`);
-});
-
-// Rota simples de status
-app.get('/', (req, res) => res.send('🤖 Bot WhatsApp rodando no Render!'));
-
-// Rota para enviar mensagem manualmente
+// Rotas HTTP básicas
+app.get('/', (req, res) => res.send('🤖 Bot WhatsApp rodando!'));
 app.get('/send', async (req, res) => {
-  const { number, msg } = req.query;
-  if (!number || !msg) return res.send('Use /send?number=55NUMERO&msg=MENSAGEM');
-  await sendMessage(number, msg);
-  res.send(`Mensagem enviada para ${number}`);
+    const { number, msg } = req.query;
+    if (!number || !msg) return res.send('Use /send?number=55NUMERO&msg=MENSAGEM');
+
+    await sendMessage(number, msg);
+    res.send(`Mensagem enviada para ${number}`);
 });
 
-// Inicia servidor e WhatsApp
+// Inicializa servidor e WhatsApp
 app.listen(PORT, async () => {
-  console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`);
-  await startWhatsApp();
+    console.log(`🚀 Servidor HTTP ativo na porta ${PORT}`);
+    await startWhatsApp();
 });
