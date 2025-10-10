@@ -4,19 +4,23 @@ import {
     makeWASocket,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    useMultiFileAuthState
+    useSingleFileAuthState
 } from '@whiskeysockets/baileys';
 import fs from 'fs';
 
 const PORT = process.env.PORT || 10000;
 const app = express();
 
-const AUTH_FOLDER = './auth_info_baileys';
+// 📂 Caminho da sessão
+const SESSION_FILE = './session.json';
+
+// Variável global do socket
 let sock;
 
-// 🟢 Iniciar WhatsApp
+// 🟢 Função principal
 async function startWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+    // Carrega ou cria session.json
+    const { state, saveState } = useSingleFileAuthState(SESSION_FILE);
     const { version } = await fetchLatestBaileysVersion();
 
     sock = makeWASocket({
@@ -25,13 +29,15 @@ async function startWhatsApp() {
         printQRInTerminal: false
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    // Salva credenciais automaticamente ao mudar
+    sock.ev.on('creds.update', saveState);
 
-    sock.ev.on('connection.update', (update) => {
+    // Eventos de conexão
+    sock.ev.on('connection.update', async (update) => {
         const { connection, qr, lastDisconnect } = update;
 
         if (qr) {
-            console.log('⚡ QR Code gerado! Acesse /qrcode para escanear.');
+            console.log('⚡ QR Code disponível! Acesse /qrcode para escanear.');
             app.get('/qrcode', async (req, res) => {
                 const qrImage = await qrcode.toDataURL(qr);
                 res.send(`<img src="${qrImage}" />`);
@@ -40,33 +46,37 @@ async function startWhatsApp() {
 
         if (connection === 'close') {
             const reason = (lastDisconnect?.error)?.output?.statusCode;
-            console.log('❌ Conexão caiu. Tentando reconectar...', reason);
-            setTimeout(startWhatsApp, 2000);
+            console.log('❌ Conexão fechada. Tentando reconectar...', reason);
+            setTimeout(startWhatsApp, 3000);
         }
 
         if (connection === 'open') {
             console.log('✅ WhatsApp conectado com sucesso!');
+            // Teste de envio automático
             setTimeout(async () => {
-                await sendMessage('5577981434412', '🚀 Teste automático após conexão com MultiFileAuth!');
+                await sendMessage('5577981434412', '🤖 Bot reconectado com session.json!');
             }, 2000);
         }
     });
 }
 
-// ✉️ Função genérica para enviar mensagem
+// ✉️ Função genérica para envio de mensagem
 async function sendMessage(number, message) {
     if (!sock || !sock.user) {
         console.log('⚠️ WhatsApp ainda não está conectado.');
         return;
     }
 
-    const jid = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+    const jid = number.includes('@s.whatsapp.net')
+        ? number
+        : `${number}@s.whatsapp.net`;
+
     await sock.sendMessage(jid, { text: message });
     console.log(`✅ Mensagem enviada para ${number}`);
 }
 
-// 🌐 Rotas
-app.get('/', (req, res) => res.send('🤖 Bot WhatsApp rodando com MultiFileAuth!'));
+// 🌐 Rotas HTTP
+app.get('/', (req, res) => res.send('🤖 Bot WhatsApp com session.json rodando!'));
 app.get('/send', async (req, res) => {
     const { number, msg } = req.query;
     if (!number || !msg) return res.send('Use /send?number=55NUMERO&msg=MENSAGEM');
@@ -74,8 +84,8 @@ app.get('/send', async (req, res) => {
     res.send(`Mensagem enviada para ${number}`);
 });
 
-// 🚀 Inicialização
+// 🚀 Inicializa servidor + WhatsApp
 app.listen(PORT, async () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor HTTP ativo na porta ${PORT}`);
     await startWhatsApp();
 });
