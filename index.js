@@ -1,114 +1,99 @@
 import express from "express";
 import fs from "fs";
-import makeWASocket, { useMultiFileAuthState, jidNormalizedUser, DisconnectReason } from "@whiskeysockets/baileys";
+import makeWASocket, { useMultiFileAuthState, jidNormalizedUser } from "@whiskeysockets/baileys";
 import qrcode from "qrcode";
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-app.use(express.json()); // Para aceitar JSON no POST
+app.use(express.json()); // necessário para receber JSON do POST
 
-// -------------------
-// Variáveis globais
-// -------------------
 let sock;
 let lastQR = null;
 let botJid = null;
 
-// -------------------
-// Pasta de autenticação
-// -------------------
+// Lista para debug (armazenar todas as mensagens recebidas)
+let debugMensagens = [];
+
+// 🔸 Pasta auth
 const AUTH_FOLDER = './auth';
-if (!fs.existsSync(AUTH_FOLDER)) {
-    fs.mkdirSync(AUTH_FOLDER);
-    console.log('📁 Pasta "auth" criada para armazenar credenciais.');
-}
+if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER);
 
-// -------------------
-// Rota QR Code
-// -------------------
+// 🟢 Rota para exibir QR code
 app.get("/qrcode", async (req, res) => {
-    if (!lastQR) return res.send("⏳ QR Code ainda não gerado. Aguarde alguns segundos...");
-    const qrImg = await qrcode.toDataURL(lastQR);
-    res.send(`<h2>Escaneie o QR Code com o número oficial</h2><img src="${qrImg}" />`);
+  if (!lastQR) return res.send("⏳ QR Code ainda não gerado.");
+  const qrImg = await qrcode.toDataURL(lastQR);
+  res.send(`<h2>Escaneie o QR do número oficial</h2><img src="${qrImg}" />`);
 });
 
-// -------------------
-// Status do bot
-// -------------------
-app.get("/", (req, res) => res.send(`🤖 Bot rodando ✅ - Número conectado: ${botJid || 'Aguardando conexão'}`));
+// 🟡 Rota de status do bot
+app.get("/", (req, res) => res.send(`🤖 Bot rodando - Número: ${botJid || 'Aguardando conexão'}`));
 
-// -------------------
-// Rota POST /send-message
-// -------------------
+// 🟢 Rota de debug para ver todas as mensagens recebidas do PHP
+app.get("/debug", (req, res) => {
+  let html = `<h2>Mensagens recebidas via index.php</h2>`;
+  html += `<ul>`;
+  debugMensagens.forEach((m, i) => {
+    html += `<li><strong>${i+1}</strong> - Número: ${m.numero}, Mensagem: ${m.mensagem}</li>`;
+  });
+  html += `</ul>`;
+  res.send(html);
+});
+
+// 🟢 Rota POST para receber mensagem do PHP
 app.post("/send-message", async (req, res) => {
-    console.log("🔹 Requisição recebida em /send-message:", req.body);
+  const { numero, mensagem } = req.body;
 
-    const { numero, mensagem } = req.body;
+  if (!numero || !mensagem) {
+    return res.status(400).json({ error: "Número e mensagem são obrigatórios" });
+  }
 
-    if (!numero || !mensagem) {
-        return res.status(400).json({ error: "Número e mensagem são obrigatórios" });
-    }
+  // Armazena para debug
+  debugMensagens.push({ numero, mensagem });
 
-    if (!sock || !botJid) {
-        return res.status(503).json({ error: "Bot ainda não conectado. Tente novamente em alguns segundos." });
-    }
+  if (!sock || !botJid) {
+    return res.status(503).json({ error: "Bot ainda não conectado" });
+  }
 
-    try {
-        const jid = `${numero.replace(/\D/g, '')}@s.whatsapp.net`;
-        console.log(`📤 Enviando mensagem para ${jid}...`);
-
-        await sock.sendMessage(jid, { text: mensagem });
-
-        console.log(`✅ Mensagem enviada com sucesso para ${jid}: "${mensagem}"`);
-        return res.json({ success: true, numero: jid, mensagem });
-    } catch (err) {
-        console.error("❌ Erro ao enviar mensagem:", err);
-        return res.status(500).json({ error: err.message });
-    }
+  try {
+    const jid = `${numero.replace(/\D/g,'')}@s.whatsapp.net`;
+    await sock.sendMessage(jid, { text: mensagem });
+    console.log(`📤 Mensagem enviada para ${jid}: "${mensagem}"`);
+    return res.json({ success: true, numero: jid, mensagem });
+  } catch (err) {
+    console.error("❌ Erro ao enviar mensagem:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
-// -------------------
-// Inicializa o bot WhatsApp
-// -------------------
-async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
-
-    sock = makeWASocket({
-        printQRInTerminal: false,
-        auth: state,
-        browser: ["Ubuntu", "Chrome", "22.04.4"],
-    });
-
-    sock.ev.on("creds.update", saveCreds);
-
-    sock.ev.on("connection.update", (update) => {
-        const { connection, qr, lastDisconnect, isNewLogin } = update;
-
-        if (qr) {
-            lastQR = qr;
-            console.log("📱 QR Code gerado! Acesse /qrcode para escanear.");
-        }
-
-        if (connection === "open") {
-            botJid = jidNormalizedUser(sock.user.id);
-            console.log(`✅ Bot conectado: ${botJid}`);
-        } else if (connection === "close") {
-            const reason = lastDisconnect?.error?.output?.statusCode;
-            if (reason !== DisconnectReason.loggedOut) {
-                console.log("⚠️ Conexão caiu. Tentando reconectar...");
-                startBot();
-            } else {
-                console.log("❌ Sessão expirada. Será necessário escanear o QR novamente.");
-            }
-        }
-    });
-}
-
-// -------------------
-// Inicializa servidor
-// -------------------
+// 🟢 Inicializa o bot
 app.listen(PORT, () => {
-    console.log(`🌐 Servidor HTTP rodando na porta ${PORT}`);
-    startBot();
+  console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`);
+  startBot();
 });
+
+// 🟢 Função principal do bot
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+
+  sock = makeWASocket({
+    printQRInTerminal: false,
+    auth: state,
+    browser: ["Ubuntu", "Chrome", "22.04.4"],
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", (update) => {
+    const { connection, qr, isNewLogin } = update;
+    if (qr) lastQR = qr;
+
+    if (connection === "open") {
+      botJid = jidNormalizedUser(sock.user.id);
+      console.log(`✅ Bot conectado: ${botJid}`);
+    } else if (connection === "close") {
+      console.log("⚠️ Conexão caiu, tentando reconectar...");
+      startBot();
+    }
+  });
+}
