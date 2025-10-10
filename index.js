@@ -1,46 +1,51 @@
 import express from "express";
+import bodyParser from "body-parser";
+import puppeteer from "puppeteer";
 import fs from "fs";
-import makeWASocket, { useMultiFileAuthState, jidNormalizedUser } from "@whiskeysockets/baileys";
-import qrcode from "qrcode";
+import path from "path";
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-app.use(express.json()); // necessário para receber JSON do POST
+app.use(bodyParser.json());
 
-let sock;
-let lastQR = null;
-let botJid = null;
+// Pasta para salvar sessão do WhatsApp Web
+const SESSION_PATH = path.join(process.cwd(), "sessions");
+if (!fs.existsSync(SESSION_PATH)) fs.mkdirSync(SESSION_PATH);
 
-// Lista para debug (armazenar todas as mensagens recebidas)
-let debugMensagens = [];
+let browser;
+let page;
 
-// 🔸 Pasta auth
-const AUTH_FOLDER = './auth';
-if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER);
-
-// 🟢 Rota para exibir QR code
-app.get("/qrcode", async (req, res) => {
-  if (!lastQR) return res.send("⏳ QR Code ainda não gerado.");
-  const qrImg = await qrcode.toDataURL(lastQR);
-  res.send(`<h2>Escaneie o QR do número oficial</h2><img src="${qrImg}" />`);
-});
-
-// 🟡 Rota de status do bot
-app.get("/", (req, res) => res.send(`🤖 Bot rodando - Número: ${botJid || 'Aguardando conexão'}`));
-
-// 🟢 Rota de debug para ver todas as mensagens recebidas do PHP
-app.get("/debug", (req, res) => {
-  let html = `<h2>Mensagens recebidas via index.php</h2>`;
-  html += `<ul>`;
-  debugMensagens.forEach((m, i) => {
-    html += `<li><strong>${i+1}</strong> - Número: ${m.numero}, Mensagem: ${m.mensagem}</li>`;
+// Função para iniciar Puppeteer e WhatsApp Web
+async function initWhatsApp() {
+  browser = await puppeteer.launch({
+    headless: false,
+    userDataDir: SESSION_PATH,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
-  html += `</ul>`;
-  res.send(html);
-});
 
-// 🟢 Rota POST para receber mensagem do PHP
+  page = await browser.newPage();
+  await page.goto("https://web.whatsapp.com");
+  console.log("📱 Acesse o WhatsApp Web e escaneie o QR Code (somente na primeira vez).");
+
+  // Espera WhatsApp Web carregar
+  await page.waitForSelector('div[role="textbox"]', { timeout: 0 });
+  console.log("✅ WhatsApp Web carregado e pronto para enviar mensagens!");
+}
+
+// Função para enviar mensagem
+async function sendMessage(numero, mensagem) {
+  const url = `https://web.whatsapp.com/send?phone=${numero}&text=${encodeURIComponent(mensagem)}`;
+  await page.goto(url);
+
+  // Espera carregar o botão de enviar
+  await page.waitForSelector('span[data-icon="send"]', { timeout: 60000 });
+  await page.click('span[data-icon="send"]');
+
+  console.log(`📤 Mensagem enviada para ${numero}: "${mensagem}"`);
+}
+
+// Rota para testar envio de mensagens
 app.post("/send-message", async (req, res) => {
   const { numero, mensagem } = req.body;
 
@@ -48,52 +53,19 @@ app.post("/send-message", async (req, res) => {
     return res.status(400).json({ error: "Número e mensagem são obrigatórios" });
   }
 
-  // Armazena para debug
-  debugMensagens.push({ numero, mensagem });
-
-  if (!sock || !botJid) {
-    return res.status(503).json({ error: "Bot ainda não conectado" });
-  }
-
   try {
-    const jid = `${numero.replace(/\D/g,'')}@s.whatsapp.net`;
-    await sock.sendMessage(jid, { text: mensagem });
-    console.log(`📤 Mensagem enviada para ${jid}: "${mensagem}"`);
-    return res.json({ success: true, numero: jid, mensagem });
+    await sendMessage(numero, mensagem);
+    return res.json({ success: true, numero, mensagem });
   } catch (err) {
-    console.error("❌ Erro ao enviar mensagem:", err.message);
+    console.error("❌ Erro ao enviar mensagem:", err);
     return res.status(500).json({ error: err.message });
   }
 });
 
-// 🟢 Inicializa o bot
-app.listen(PORT, () => {
-  console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`);
-  startBot();
+// Status do bot
+app.get("/", (req, res) => res.send("🤖 Bot WhatsApp rodando com Puppeteer!"));
+
+app.listen(PORT, async () => {
+  console.log(`🌐 Servidor rodando na porta ${PORT}`);
+  await initWhatsApp();
 });
-
-// 🟢 Função principal do bot
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
-
-  sock = makeWASocket({
-    printQRInTerminal: false,
-    auth: state,
-    browser: ["Ubuntu", "Chrome", "22.04.4"],
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("connection.update", (update) => {
-    const { connection, qr, isNewLogin } = update;
-    if (qr) lastQR = qr;
-
-    if (connection === "open") {
-      botJid = jidNormalizedUser(sock.user.id);
-      console.log(`✅ Bot conectado: ${botJid}`);
-    } else if (connection === "close") {
-      console.log("⚠️ Conexão caiu, tentando reconectar...");
-      startBot();
-    }
-  });
-}
