@@ -1,62 +1,59 @@
-import makeWASocket, { useSingleFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
-import QRCode from 'qrcode';
-import express from 'express';
-import fs from 'fs';
+import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys'
+import express from 'express'
 
-// Pasta para salvar sessão
-const SESSION_FILE = './session.json';
+const app = express()
+const PORT = process.env.PORT || 10000
 
-// Cria pasta se não existir
-if (!fs.existsSync('./auth_info')) fs.mkdirSync('./auth_info');
+let sock // variável global do socket
 
-// Configura autenticação
-const { state, saveState } = useSingleFileAuthState(SESSION_FILE);
+const startBot = async () => {
+  const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true
+  })
 
-// Cria store em memória
-const store = {};
+  sock = makeWASocket({ auth: state, printQRInTerminal: true })
+  sock.ev.on('creds.update', saveCreds)
 
-const startSock = () => {
-    const sock = makeWASocket({
-        printQRInTerminal: true,
-        auth: state,
-        browser: ['Bot', 'Chrome', '1.0.0']
-    });
+  // Quando a conexão for aberta = logado ✅
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect } = update
+    const { connection } = update
+    if (connection === 'open') {
+      console.log('✅ Conectado ao WhatsApp!')
 
-    // Atualiza sessão ao mudar
-    sock.ev.on('creds.update', saveState);
+      // Exemplo: envia mensagem automática após logar
+      enviarMensagemAutomatica(sock)
+      // Agora podemos enviar mensagens
+      enviarMensagemAutomatica()
+    } else if (connection === 'close') {
+      console.log('⚠ Conexão caiu, tentando reconectar...')
+      startBot() // reconecta automaticamente
+    }
+  })
+}
 
-    // Reconexão automática
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        if (qr) console.log('⚡ QR Code gerado! Escaneie com o WhatsApp');
-        if (connection === 'close') {
-            const reason = lastDisconnect?.error?.output?.statusCode;
-            if (reason !== DisconnectReason.loggedOut) {
-                console.log('❌ Conexão caiu. Tentando reconectar...');
-                startSock();
-            } else {
-                console.log('❌ Conexão encerrada. Faça login novamente.');
-            }
-        } else if (connection === 'open') {
-            console.log('✅ Conectado ao WhatsApp!');
-        }
-    });
+function enviarMensagemAutomatica(sock) {
+  const numero = '5577988556030@s.whatsapp.net' // formato correto com DDI e DDD
+function enviarMensagemAutomatica() {
+  if (!sock || !sock.authState) return console.log('Socket não está pronto')
 
-    // Servidor para exibir QR Code
-    const app = express();
-    app.get('/qrcode', async (req, res) => {
-        sock.ev.once('connection.update', async (update) => {
-            if (update.qr) {
-                const qrDataUrl = await QRCode.toDataURL(update.qr);
-                res.send(`<img src="${qrDataUrl}"/>`);
-            } else {
-                res.send('QR Code não disponível no momento');
-            }
-        });
-    });
-    app.listen(3000, () => console.log('Acesse http://localhost:3000/qrcode para ver o QR Code'));
+  const numero = '5577981145420@s.whatsapp.net' // exemplo
+  const mensagem = 'Olá 👋 Esta é uma mensagem automática!'
 
-    return sock;
-};
+  sock.sendMessage(numero, { text: mensagem })
+    .then(() => console.log('✅ Mensagem enviada com sucesso!'))
+    .catch((err) => console.error('❌ Erro ao enviar mensagem:', err))
+    .catch(err => console.error('❌ Erro ao enviar mensagem:', err))
+}
 
-startSock();
+app.get('/', (req, res) => {
+  res.send('Bot WhatsApp rodando ✅')
+})
+app.get('/', (req, res) => res.send('Bot WhatsApp rodando ✅'))
+
+app.listen(PORT, () => {
+  console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`)
+  startBot()
+})
