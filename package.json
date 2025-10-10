@@ -4,20 +4,17 @@
   "type": "module",
   "description": "Bot WhatsApp automatizado com Baileys + Express para deploy gratuito no Render",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.0",
-    "@hapi/boom": "^10.0.1"
-  }
     "@whiskeysockets/baileys": "^6.7.8",
+    "@hapi/boom": "^10.0.1",
     "express": "^4.19.2"
   },
   "engines": {
     "node": ">=18 <23"
   },
-  "author": "",
+  "author": "Leandro Rocha",
   "license": "MIT"
 }
