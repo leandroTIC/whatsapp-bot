@@ -1,55 +1,61 @@
-// index.js
-import makeWASocket, { 
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    useMultiFileAuthState,
-    makeInMemoryStore
-} from '@whiskeysockets/baileys';
-import P from 'pino';
+import { default as makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import qrcode from 'qrcode';
+import express from 'express';
+import fs from 'fs';
 
-// Cria pasta auth_info_baileys para salvar credenciais
-const { state, saveCreds } = await useMultiFileAuthState('./auth_info_baileys');
+const app = express();
+const PORT = 3000;
 
-// Cria store em memória (opcional, mas útil para eventos e histórico)
-const store = makeInMemoryStore({ logger: P({ level: 'silent' }) });
+// Pasta de autenticação
+const AUTH_DIR = './auth_info';
 
-// Função principal do bot
+app.get('/qrcode', async (req, res) => {
+    const qrImage = fs.existsSync(`${AUTH_DIR}/session.json`) ? null : 'QR ainda não gerado';
+    res.send(qrImage);
+});
+
 async function startBot() {
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`Baileys version: ${version}, isLatest: ${isLatest}`);
+    // Usando autenticação com múltiplos arquivos (novo método do Baileys)
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+    // Pegar versão mais recente do WhatsApp Web
+    const { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
-        logger: P({ level: 'silent' }),
-        printQRInTerminal: true,  // mostra QR se necessário
-        auth: state
+        version,
+        auth: state,
+        printQRInTerminal: true
     });
 
-    // Vincula store aos eventos do socket
-    store.bind(sock.ev);
-
-    // Salva credenciais quando necessário
+    // Salvar credenciais sempre que mudarem
     sock.ev.on('creds.update', saveCreds);
 
-    // Log de conexões
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            console.log('⚡ QR Code gerado! Acesse /qrcode para escanear.');
+            qrcode.toDataURL(qr).then(url => {
+                fs.writeFileSync('./qrcode.html', `<img src="${url}">`);
+            });
+        }
+
         if (connection === 'close') {
-            const reason = lastDisconnect?.error?.output?.statusCode;
-            console.log('Conexão caiu, tentando reconectar...', reason);
-            startBot(); // reconecta automaticamente
+            console.log('❌ Conexão caiu, tentando reconectar...', lastDisconnect?.error?.output?.statusCode);
+            startBot(); // Reconnect
         } else if (connection === 'open') {
             console.log('✅ Conectado ao WhatsApp!');
         }
     });
 
-    // Exemplo de mensagem recebida
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.message) return;
-        const sender = msg.key.remoteJid;
-        console.log(`Mensagem recebida de ${sender}:`, msg.message.conversation);
+    sock.ev.on('messages.upsert', (m) => {
+        console.log('Nova mensagem recebida: ', m);
     });
 }
 
-// Inicia o bot
+// Start
 startBot();
+
+app.listen(PORT, () => {
+    console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
