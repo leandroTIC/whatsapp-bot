@@ -1,100 +1,114 @@
 import express from "express";
-import makeWASocket, {
-  DisconnectReason,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion
-} from "@whiskeysockets/baileys";
+import fs from "fs";
+import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
 import qrcode from "qrcode";
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Número oficial do bot
-const NUMERO_OFICIAL = "5577988556030";
+let sock;       // Conexão com o WhatsApp
+let lastQR = null; // Guarda o QR gerado para exibir no navegador
+let botJid = null; // Armazena o JID (número) do bot após a conexão
 
-// Lista de destinatários (adicione mais se quiser)
-const DESTINATARIOS = [
-  "5577981434412", // Exemplo: destinatário 1
-  "5577981145420"  // Exemplo: destinatário 2
-];
-
-let sock;
-let lastQR = null;
-
-/**
- * Gera e exibe o QR Code no navegador
- */
-app.get("/qrcode", async (req, res) => {
-  if (!lastQR) return res.send("⏳ QR Code ainda não gerado. Aguarde alguns segundos.");
-  const qrImg = await qrcode.toDataURL(lastQR);
-  res.send(`
-    <h2>📱 Escaneie o QR Code com o WhatsApp do número oficial</h2>
-    <img src="${qrImg}" />
-    <p>Após escanear, mantenha o WhatsApp conectado neste número.</p>
-  `);
-});
-
-/**
- * Rota de teste do bot
- */
-app.get("/", (req, res) => {
-  res.send("🤖 Bot WhatsApp rodando no Render ✅");
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor ativo na porta ${PORT}`);
-  startBot();
-});
-
-/**
- * Inicializa o bot WhatsApp
- */
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("./auth");
-  const { version } = await fetchLatestBaileysVersion();
-
-  sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: true,
-    version
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("connection.update", (update) => {
-    const { connection, qr, lastDisconnect } = update;
-
-    if (qr) {
-      lastQR = qr;
-      console.log("✅ QR Code gerado! Acesse /qrcode para escanear.");
-    }
-
-    if (connection === "open") {
-      console.log("✅ Conectado com sucesso ao WhatsApp!");
-      enviarMensagensAutomaticas();
-    } else if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log("⚠ Conexão caiu. Reconectando...", shouldReconnect);
-      if (shouldReconnect) startBot();
-    }
-  });
+// 🔸 Garante que a pasta de autenticação existe
+const AUTH_FOLDER = './auth';
+if (!fs.existsSync(AUTH_FOLDER)) {
+  fs.mkdirSync(AUTH_FOLDER);
+  console.log('📁 Pasta "auth" criada para armazenar credenciais.');
 }
 
-/**
- * Envia mensagens para todos os destinatários da lista
- */
+// 🟢 Rota para exibir o QR Code no navegador
+app.get("/qrcode", async (req, res) => {
+  if (!lastQR) {
+    return res.send("⏳ **QR Code ainda não gerado.** Aguarde alguns segundos e atualize a página.");
+  }
+  const qrImg = await qrcode.toDataURL(lastQR);
+  res.send(`<h2>Escaneie o QR Code com o número OFICIAL: +55 77 98855-6030</h2><img src="${qrImg}" />`);
+});
+
+// 🟡 Rota de status
+app.get("/", (req, res) => res.send(`🤖 Bot WhatsApp rodando ✅ - Número conectado: ${botJid || 'Aguardando conexão'}`));
+
+// 🟢 Inicializa servidor HTTP
+app.listen(PORT, () => {
+  console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`);
+  startBot();
+});
+
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+
+  sock = makeWASocket({
+    printQRInTerminal: false,
+    auth: state,
+    browser: ["Ubuntu", "Chrome", "22.04.4"], // Identificação do cliente
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", (update) => {
+    const { connection, qr, lastDisconnect, isNewLogin } = update;
+
+    if (qr) {
+      lastQR = qr;
+      console.log("📱 QR Code gerado! Acesse /qrcode para escanear.");
+    }
+
+    if (connection === "open") {
+      // Captura o JID (Remetente) do número que escaneou o QR Code
+      botJid = sock.user.id; 
+      console.log(`✅ Conectado ao WhatsApp com sucesso! REMETENTE: ${botJid}`);
+      
+      // Envia as mensagens automáticas na primeira conexão
+      if (isNewLogin) {
+        enviarMensagensAutomaticas();
+      } else {
+        console.log('Sessão restaurada. Não enviando mensagens automáticas novamente.');
+      }
+
+    } else if (connection === "close") {
+      const reason = lastDisconnect?.error?.output?.statusCode;
+      if (reason !== DisconnectReason.loggedOut) {
+        console.log("⚠️ Conexão caiu. Tentando reconectar...");
+        startBot();
+      } else {
+        console.log("❌ Sessão expirada. Será necessário escanear o QR novamente.");
+      }
+    }
+  });
+}
+
+// 📨 Envia mensagens automáticas para uma lista de destinatários
 async function enviarMensagensAutomaticas() {
-  const mensagem = "👋 Olá! Esta é uma mensagem automática enviada pelo bot.";
+  
+  // 🔴 LISTA DE DESTINATÁRIOS
+  // **MUITO IMPORTANTE:** Use números COMPLETAMENTE DIFERENTES do bot (+5577988556030).
+  // Formato: DDI + DDD + Número + @s.whatsapp.net
+  
+  const destinatarios = [
+    "5577981434412@s.whatsapp.net", // DESTINATÁRIO 1 (Troque por um número real que não seja o bot)
+    "5577981145420@s.whatsapp.net"  // DESTINATÁRIO 2 (Troque por outro número real)
+  ];
 
-  for (const numero of DESTINATARIOS) {
-    const jid = `${numero}@s.whatsapp.net`;
+  const mensagem = "👋 Esta é uma mensagem automática enviada pelo BOT oficial +55 77 98855-6030 ✅";
+  
+  console.log(`\n--- INICIANDO ENVIO DE MENSAGENS (Remetente: ${botJid}) ---`);
 
-    try {
-      await sock.sendMessage(jid, { text: mensagem });
-      console.log(`✅ Mensagem enviada com sucesso para ${numero}`);
-    } catch (erro) {
-      console.error(`❌ Erro ao enviar mensagem para ${numero}:`, erro);
-    }
-  }
+  for (const numero of destinatarios) {
+    // ✅ VERIFICAÇÃO DE SEGURANÇA: Garante que não envia para o próprio bot
+    if (numero === botJid) {
+      console.warn(`⚠️ Pulando envio. O próprio número do BOT (${numero}) está na lista de destinatários.`);
+      continue; 
+    }
+    
+    try {
+      // O sock.sendMessage usa o 'botJid' (Remetente) para enviar para 'numero' (Destinatário)
+      await sock.sendMessage(numero, { text: mensagem });
+      console.log(`📤 Mensagem enviada com sucesso para o DESTINATÁRIO: ${numero}`);
+    } catch (err) {
+      console.error(`❌ Erro ao enviar para ${numero}:`, err.message);
+    }
+  }
+  
+  console.log('--- ENVIO DE MENSAGENS CONCLUÍDO ---\n');
 }
