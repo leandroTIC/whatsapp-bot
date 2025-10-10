@@ -1,1 +1,17 @@
+# Ignora a pasta de autenticação do Baileys
+auth/*
+!auth/.gitkeep
+
+# Node modules
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Sistema
+.DS_Store
+.env
 
