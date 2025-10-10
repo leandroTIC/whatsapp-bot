@@ -1,16 +1,2 @@
-# Ignorar dados de autenticação do WhatsApp
-auth/*
-!auth/.gitkeep
-
-# Ignorar dependências
 node_modules/
-
-# Logs e arquivos temporários
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Arquivos do sistema
-.DS_Store
-.env
+sessions/
