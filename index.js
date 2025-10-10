@@ -1,91 +1,50 @@
-import { default as makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeInMemoryStore, proto } from '@whiskeysockets/baileys';
-import fs from 'fs';
-import P from 'pino';
+import makeWASocket, { useSingleFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
-import express from 'express';
+import fs from 'fs';
 
-// Porta para servidor express (se quiser exibir QR Code via navegador)
-const PORT = 3000;
-
-// Pasta de autenticação
-const AUTH_DIR = './auth_info';
+// Pasta para armazenar sessão
+const SESSION_FILE = './session.json';
 
 // Cria a pasta se não existir
-if (!fs.existsSync(AUTH_DIR)) {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-}
+if (!fs.existsSync('./')) fs.mkdirSync('./');
 
-// Estado de autenticação
-const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+// Usa autenticação em arquivo único
+const { state, saveState } = useSingleFileAuthState(SESSION_FILE);
 
-// Cria memória do bot
-const store = makeInMemoryStore({ logger: P({ level: 'silent' }) });
-store.readFromFile('./store.json');
-setInterval(() => store.writeToFile('./store.json'), 10000);
-
-// Função principal
-async function startBot() {
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`Usando Baileys v${version.join('.')}, Última versão? ${isLatest}`);
-
-    const sock = makeWASocket({
-        logger: P({ level: 'silent' }),
-        printQRInTerminal: true,
-        auth: state,
-        version
-    });
-
-    store.bind(sock.ev);
-
-    // Evento QR Code
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-            qrcode.generate(qr, { small: true });
-        }
-
-        if (connection === 'close') {
-            const reason = (lastDisconnect?.error)?.output?.statusCode;
-            console.log('Conexão caiu, tentando reconectar...', reason);
-            if (reason !== DisconnectReason.loggedOut) {
-                startBot();
-            } else {
-                console.log('Desconectado permanentemente.');
-            }
-        }
-
-        if (connection === 'open') {
-            console.log('✅ Conectado ao WhatsApp!');
-        }
-    });
-
-    // Salva credenciais automaticamente
-    sock.ev.on('creds.update', saveCreds);
-
-    // Exemplo de mensagem recebida
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
-
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-        if (!text) return;
-
-        console.log('Mensagem recebida:', text);
-
-        if (text.toLowerCase() === 'ping') {
-            await sock.sendMessage(msg.key.remoteJid, { text: 'Pong!' });
-        }
-    });
-}
-
-// Inicializa bot
-startBot().catch(console.error);
-
-// Servidor express para QR Code (opcional)
-const app = express();
-app.get('/qrcode', (req, res) => {
-    res.send('<h2>Escaneie o QR Code no terminal!</h2>');
+// Cria a conexão
+const sock = makeWASocket({
+    printQRInTerminal: true,
+    auth: state
 });
 
-app.listen(PORT, () => console.log(`Servidor rodando em http://localhost:${PORT}`));
+// Salva alterações de sessão
+sock.ev.on('creds.update', saveState);
+
+// Eventos de conexão
+sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+        qrcode.generate(qr, { small: true });
+        console.log('⚡ QR Code gerado! Escaneie com o WhatsApp.');
+    }
+
+    if (connection === 'close') {
+        const reason = (lastDisconnect.error as Boom)?.output?.statusCode;
+        console.log('❌ Conexão fechada', reason);
+        if (reason !== DisconnectReason.loggedOut) {
+            console.log('🔄 Tentando reconectar...');
+            startSock();
+        } else {
+            console.log('⚠️ Sessão desconectada, delete session.json e tente novamente.');
+        }
+    } else if (connection === 'open') {
+        console.log('✅ Conectado ao WhatsApp!');
+    }
+});
+
+// Função para reconectar
+function startSock() {
+    sock.ws.close();
+}
