@@ -3,53 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <title>Enviar WhatsApp pelo Bot</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
-    <h2>Enviar WhatsApp via Bot</h2>
-    <form method="post">
-        <label>Número do destinatário (somente dígitos, ex: 5577981434412):</label><br>
-        <input type="text" name="numero" required><br><br>
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
 
-        <label>Mensagem:</label><br>
-        <textarea name="mensagem" rows="4" cols="50" required></textarea><br><br>
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white text-center">
+                    <h3>Enviar WhatsApp via Bot</h3>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        <div class="mb-3">
+                            <label for="numero" class="form-label">Número do destinatário (somente dígitos, ex: 5577981434412):</label>
+                            <input type="text" class="form-control" id="numero" name="numero" required>
+                        </div>
 
-        <button type="submit">Enviar</button>
-    </form>
+                        <div class="mb-3">
+                            <label for="mensagem" class="form-label">Mensagem:</label>
+                            <textarea class="form-control" id="mensagem" name="mensagem" rows="4" required></textarea>
+                        </div>
 
-    <?php
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $numero = $_POST['numero'];
-        $mensagem = $_POST['mensagem'];
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success">Enviar</button>
+                        </div>
+                    </form>
 
-        // Chamada HTTP para o bot Node.js
-        $url = "http://localhost:10000/send-message"; // ajuste se o Node estiver em outro host/porta
-        $data = json_encode([
-            "numero" => $numero,
-            "mensagem" => $mensagem
-        ]);
+                    <?php
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                        $numero = $_POST['numero'];
+                        $mensagem = $_POST['mensagem'];
 
-        $options = [
-            "http" => [
-                "header" => "Content-Type: application/json\r\n",
-                "method" => "POST",
-                "content" => $data
-            ]
-        ];
+                        // Chamada HTTP para o bot Node.js
+                        $url = "http://localhost:10000/send-message"; // ajuste conforme seu host/porta
+                        $data = json_encode([
+                            "numero" => $numero,
+                            "mensagem" => $mensagem
+                        ]);
 
-        $context = stream_context_create($options);
-        $result = file_get_contents($url, false, $context);
+                        $options = [
+                            "http" => [
+                                "header" => "Content-Type: application/json\r\n",
+                                "method" => "POST",
+                                "content" => $data
+                            ]
+                        ];
 
-        if ($result === FALSE) {
-            echo "<p style='color:red;'>❌ Erro ao enviar mensagem.</p>";
-        } else {
-            $response = json_decode($result, true);
-            if (isset($response['success'])) {
-                echo "<p style='color:green;'>✅ Mensagem enviada para {$response['to']}: {$response['message']}</p>";
-            } else {
-                echo "<p style='color:red;'>❌ Erro: {$response['error']}</p>";
-            }
-        }
-    }
-    ?>
+                        $context = stream_context_create($options);
+                        $result = @file_get_contents($url, false, $context);
+
+                        if ($result === FALSE) {
+                            echo '<div class="alert alert-danger mt-3" role="alert">❌ Erro ao enviar mensagem.</div>';
+                        } else {
+                            $response = json_decode($result, true);
+                            if (isset($response['success']) && $response['success']) {
+                                echo '<div class="alert alert-success mt-3" role="alert">';
+                                echo "✅ Mensagem enviada para <strong>{$numero}</strong>: {$mensagem}";
+                                echo '</div>';
+                            } else {
+                                $erroMsg = $response['error'] ?? 'Erro desconhecido.';
+                                echo '<div class="alert alert-danger mt-3" role="alert">';
+                                echo "❌ Erro: {$erroMsg}";
+                                echo '</div>';
+                            }
+                        }
+                    }
+                    ?>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Bootstrap JS (opcional, para componentes interativos) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
