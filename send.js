@@ -14,6 +14,7 @@ if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER);
 let sock;
 let botJid = null;
 
+
 // Inicializa o bot WhatsApp
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
