@@ -1,61 +1,91 @@
-import { default as makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
-import qrcode from 'qrcode';
-import express from 'express';
+import { default as makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeInMemoryStore, proto } from '@whiskeysockets/baileys';
 import fs from 'fs';
+import P from 'pino';
+import qrcode from 'qrcode-terminal';
+import express from 'express';
 
-const app = express();
+// Porta para servidor express (se quiser exibir QR Code via navegador)
 const PORT = 3000;
 
 // Pasta de autenticação
 const AUTH_DIR = './auth_info';
 
-app.get('/qrcode', async (req, res) => {
-    const qrImage = fs.existsSync(`${AUTH_DIR}/session.json`) ? null : 'QR ainda não gerado';
-    res.send(qrImage);
-});
+// Cria a pasta se não existir
+if (!fs.existsSync(AUTH_DIR)) {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+}
 
+// Estado de autenticação
+const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+// Cria memória do bot
+const store = makeInMemoryStore({ logger: P({ level: 'silent' }) });
+store.readFromFile('./store.json');
+setInterval(() => store.writeToFile('./store.json'), 10000);
+
+// Função principal
 async function startBot() {
-    // Usando autenticação com múltiplos arquivos (novo método do Baileys)
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-
-    // Pegar versão mais recente do WhatsApp Web
-    const { version } = await fetchLatestBaileysVersion();
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`Usando Baileys v${version.join('.')}, Última versão? ${isLatest}`);
 
     const sock = makeWASocket({
-        version,
+        logger: P({ level: 'silent' }),
+        printQRInTerminal: true,
         auth: state,
-        printQRInTerminal: true
+        version
     });
 
-    // Salvar credenciais sempre que mudarem
-    sock.ev.on('creds.update', saveCreds);
+    store.bind(sock.ev);
 
+    // Evento QR Code
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            console.log('⚡ QR Code gerado! Acesse /qrcode para escanear.');
-            qrcode.toDataURL(qr).then(url => {
-                fs.writeFileSync('./qrcode.html', `<img src="${url}">`);
-            });
+            qrcode.generate(qr, { small: true });
         }
 
         if (connection === 'close') {
-            console.log('❌ Conexão caiu, tentando reconectar...', lastDisconnect?.error?.output?.statusCode);
-            startBot(); // Reconnect
-        } else if (connection === 'open') {
+            const reason = (lastDisconnect?.error)?.output?.statusCode;
+            console.log('Conexão caiu, tentando reconectar...', reason);
+            if (reason !== DisconnectReason.loggedOut) {
+                startBot();
+            } else {
+                console.log('Desconectado permanentemente.');
+            }
+        }
+
+        if (connection === 'open') {
             console.log('✅ Conectado ao WhatsApp!');
         }
     });
 
-    sock.ev.on('messages.upsert', (m) => {
-        console.log('Nova mensagem recebida: ', m);
+    // Salva credenciais automaticamente
+    sock.ev.on('creds.update', saveCreds);
+
+    // Exemplo de mensagem recebida
+    sock.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        if (!text) return;
+
+        console.log('Mensagem recebida:', text);
+
+        if (text.toLowerCase() === 'ping') {
+            await sock.sendMessage(msg.key.remoteJid, { text: 'Pong!' });
+        }
     });
 }
 
-// Start
-startBot();
+// Inicializa bot
+startBot().catch(console.error);
 
-app.listen(PORT, () => {
-    console.log(`Servidor rodando em http://localhost:${PORT}`);
+// Servidor express para QR Code (opcional)
+const app = express();
+app.get('/qrcode', (req, res) => {
+    res.send('<h2>Escaneie o QR Code no terminal!</h2>');
 });
+
+app.listen(PORT, () => console.log(`Servidor rodando em http://localhost:${PORT}`));
