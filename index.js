@@ -4,19 +4,23 @@ import {
     makeWASocket,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    useMultiFileAuthState
+    useSingleFileAuthState
 } from '@whiskeysockets/baileys';
+import fs from 'fs';
 
 const PORT = process.env.PORT || 10000;
 const app = express();
 
-// Pasta onde fica a sessão autenticada
-const authFolder = './auth_info_baileys';
+// 📂 Caminho da sessão
+const SESSION_FILE = './session.json';
+
+// Variável global do socket
 let sock;
 
-// 🧠 Função principal de inicialização
+// 🟢 Função principal
 async function startWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+    // Carrega ou cria session.json
+    const { state, saveState } = useSingleFileAuthState(SESSION_FILE);
     const { version } = await fetchLatestBaileysVersion();
 
     sock = makeWASocket({
@@ -25,51 +29,38 @@ async function startWhatsApp() {
         printQRInTerminal: false
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    // Salva credenciais automaticamente ao mudar
+    sock.ev.on('creds.update', saveState);
 
-    // Conexão com WhatsApp
-    sock.ev.on('connection.update', (update) => {
+    // Eventos de conexão
+    sock.ev.on('connection.update', async (update) => {
         const { connection, qr, lastDisconnect } = update;
 
-        // 👉 Gera QR e disponibiliza na rota /qrcode
         if (qr) {
-            console.log('⚡ QR Code gerado! Acesse /qrcode no navegador para escanear.');
+            console.log('⚡ QR Code disponível! Acesse /qrcode para escanear.');
             app.get('/qrcode', async (req, res) => {
-                try {
-                    const qrImage = await qrcode.toDataURL(qr);
-                    res.send(`<img src="${qrImage}" />`);
-                } catch (err) {
-                    res.send('Erro ao gerar QR Code');
-                }
+                const qrImage = await qrcode.toDataURL(qr);
+                res.send(`<img src="${qrImage}" />`);
             });
         }
 
-        // 👉 Se cair, tenta reconectar
         if (connection === 'close') {
             const reason = (lastDisconnect?.error)?.output?.statusCode;
-            console.log('❌ Conexão caiu, tentando reconectar...', reason);
-            startWhatsApp();
+            console.log('❌ Conexão fechada. Tentando reconectar...', reason);
+            setTimeout(startWhatsApp, 3000);
         }
 
-        // 👉 Conectou com sucesso
         if (connection === 'open') {
             console.log('✅ WhatsApp conectado com sucesso!');
-            console.log('📲 Número conectado:', sock.user?.id || '(desconhecido)');
-
-            // Envio de mensagem de teste após 3s
+            // Teste de envio automático
             setTimeout(async () => {
-                try {
-                    await sendMessage('5577881434412', 'Oi, tudo bem? Teste automático ✅');
-                    console.log('📨 Mensagem de teste enviada para 557781434412');
-                } catch (err) {
-                    console.error('❌ Erro ao enviar mensagem de teste:', err);
-                }
-            }, 3000);
+                await sendMessage('5577981434412', '🤖 Bot reconectado com session.json!');
+            }, 2000);
         }
     });
 }
 
-// 📩 Função para enviar mensagem
+// ✉️ Função genérica para envio de mensagem
 async function sendMessage(number, message) {
     if (!sock || !sock.user) {
         console.log('⚠️ WhatsApp ainda não está conectado.');
@@ -84,19 +75,17 @@ async function sendMessage(number, message) {
     console.log(`✅ Mensagem enviada para ${number}`);
 }
 
-// 🌐 Rotas HTTP básicas
-app.get('/', (req, res) => res.send('🤖 Bot WhatsApp rodando!'));
-
+// 🌐 Rotas HTTP
+app.get('/', (req, res) => res.send('🤖 Bot WhatsApp com session.json rodando!'));
 app.get('/send', async (req, res) => {
     const { number, msg } = req.query;
     if (!number || !msg) return res.send('Use /send?number=55NUMERO&msg=MENSAGEM');
-
     await sendMessage(number, msg);
     res.send(`Mensagem enviada para ${number}`);
 });
 
-// 🚀 Inicia servidor + WhatsApp
+// 🚀 Inicializa servidor + WhatsApp
 app.listen(PORT, async () => {
-    console.log(`🚀 Servidor HTTP ativo na porta ${PORT}`);
+    console.log(`Servidor HTTP ativo na porta ${PORT}`);
     await startWhatsApp();
 });
