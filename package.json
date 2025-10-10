@@ -1,25 +1,15 @@
 {
-  "name": "whatsapp-bot",
+  "name": "whatsapp-puppeteer-bot",
   "version": "1.0.0",
-  "description": "Bot WhatsApp automatizado com Baileys + Express para deploy gratuito no Render",
+  "description": "Bot WhatsApp automatizado usando Puppeteer",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.8",
-    "express": "^4.19.2",
-    "qrcode": "^1.5.1"
-  },
-  "engines": {
-    "node": ">=18 <23"
-  },
-  "keywords": [
-    "whatsapp",
-    "bot",
-    "baileys"
-  ],
-  "author": "Leandro Rocha",
-  "license": "MIT"
+    "express": "^4.18.2",
+    "puppeteer": "^21.3.8",
+    "body-parser": "^1.20.2"
+  }
 }
