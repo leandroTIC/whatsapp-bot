@@ -16,19 +16,18 @@ if (!fs.existsSync(AUTH_FOLDER)) {
   console.log("📁 Pasta 'auth' criada para armazenar credenciais.");
 }
 
-// 🔄 Função principal do bot
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
   sock = makeWASocket({
-    printQRInTerminal: false, // Não mostra no terminal (Render não exibe)
+    printQRInTerminal: false,
     auth: state,
     browser: ["Ubuntu", "Chrome", "22.04.4"]
   });
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", async (update) => {
+  sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
@@ -58,7 +57,7 @@ app.get("/", (req, res) => {
   `);
 });
 
-// 🌐 Rota para exibir o QR Code em imagem
+// 🌐 Exibe o QR Code
 app.get("/qrcode", async (req, res) => {
   if (!lastQR) {
     return res.send("⏳ QR Code ainda não gerado. Aguarde alguns segundos...");
@@ -66,17 +65,16 @@ app.get("/qrcode", async (req, res) => {
 
   try {
     const qrImage = await qrcode.toDataURL(lastQR);
-    const html = `
+    res.send(`
       <h1>📱 Escaneie o QR Code abaixo com o WhatsApp</h1>
       <img src="${qrImage}" />
-    `;
-    res.send(html);
+    `);
   } catch (err) {
     res.status(500).send("❌ Erro ao gerar QR Code.");
   }
 });
 
-// 🚀 Inicializa o servidor + bot
+// 🚀 Inicializa servidor + bot
 app.listen(PORT, () => {
   console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`);
   startBot();
