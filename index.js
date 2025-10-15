@@ -74,6 +74,28 @@ app.get("/qrcode", async (req, res) => {
   }
 });
 
+// 📨 Rota para enviar mensagens: /send?to=5598999999999&msg=Olá
+app.get("/send", async (req, res) => {
+  const { to, msg } = req.query;
+
+  if (!sock) {
+    return res.status(500).send("❌ Bot ainda não está conectado ao WhatsApp.");
+  }
+  if (!to || !msg) {
+    return res.status(400).send("⚠️ Parâmetros 'to' e 'msg' são obrigatórios.");
+  }
+
+  try {
+    const jid = `${to}@s.whatsapp.net`;
+    await sock.sendMessage(jid, { text: msg });
+    console.log(`📤 Mensagem enviada para ${to}: ${msg}`);
+    res.send(`✅ Mensagem enviada com sucesso para ${to}`);
+  } catch (err) {
+    console.error("❌ Erro ao enviar mensagem:", err);
+    res.status(500).send("❌ Erro ao enviar mensagem.");
+  }
+});
+
 // 🚀 Inicializa servidor + bot
 app.listen(PORT, () => {
   console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`);
