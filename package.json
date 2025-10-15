@@ -14,9 +14,8 @@
     "qrcode": "^1.5.1"
   },
   "engines": {
-    "node": "22.x"
+    "node": ">=18 <23"
   },
   "author": "Leandro Rocha",
   "license": "MIT"
 }
-
