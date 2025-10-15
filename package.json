@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-bot",
   "version": "1.0.0",
-  "description": "Bot WhatsApp usando Baileys",
+  "description": "Bot WhatsApp automatizado para mensalidades",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -13,6 +13,7 @@
   "dependencies": {
     "@hapi/boom": "^10.0.0",
     "@whiskeysockets/baileys": "^6.0.10",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "node-cron": "^3.0.2"
   }
 }
