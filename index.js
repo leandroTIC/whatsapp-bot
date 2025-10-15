@@ -1,29 +1,33 @@
-import makeWASocket, { useSingleFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import fs from 'fs';
+import express from 'express';
 
-const PORT = process.env.PORT || 10000;
+const PORT = 10000;
+const AUTH_FOLDER = './auth';
 
 // Cria pasta auth se não existir
-if (!fs.existsSync('./auth')) fs.mkdirSync('./auth');
+if (!fs.existsSync(AUTH_FOLDER)) {
+    fs.mkdirSync(AUTH_FOLDER);
+    console.log('📁 Pasta "auth" criada para armazenar credenciais.');
+}
 
-// Usa arquivo único para sessão
-const { state, saveState } = useSingleFileAuthState('./auth/session.json');
-
-async function startBot() {
+// Função principal do bot
+function startBot() {
     const sock = makeWASocket({
-        auth: state,
         printQRInTerminal: true,
-        browser: ['RenderBot', 'Chrome', '22.04.4']
+        auth: {
+            creds: fs.existsSync(`${AUTH_FOLDER}/creds.json`)
+                ? JSON.parse(fs.readFileSync(`${AUTH_FOLDER}/creds.json`))
+                : undefined
+        }
     });
 
-    sock.ev.on('creds.update', saveState);
-
-    // Log de conexão
+    // Eventos de conexão
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('⚠️ Conexão perdida — tentando reconectar...', shouldReconnect ? '' : '(logout detectado)');
             if (shouldReconnect) startBot();
         } else if (connection === 'open') {
@@ -31,15 +35,23 @@ async function startBot() {
         }
     });
 
-    // Evento de mensagens recebidas
+    sock.ev.on('creds.update', (creds) => {
+        fs.writeFileSync(`${AUTH_FOLDER}/creds.json`, JSON.stringify(creds, null, 2));
+    });
+
+    // Exemplo de envio de mensagem
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
         if (!msg.key.fromMe && msg.message?.conversation) {
-            console.log(`📩 Mensagem recebida de ${msg.key.remoteJid}: ${msg.message.conversation}`);
-            // Resposta automática de teste
             await sock.sendMessage(msg.key.remoteJid, { text: 'Mensagem recebida!' });
         }
     });
 }
 
-startBot().catch(err => console.log(err));
+// Inicia bot
+startBot();
+
+// Servidor web simples
+const app = express();
+app.get('/', (req, res) => res.send('Bot WhatsApp rodando!'));
+app.listen(PORT, () => console.log(`🌐 Servidor HTTP ativo na porta ${PORT}`));
