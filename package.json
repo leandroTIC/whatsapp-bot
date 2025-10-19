@@ -1,0 +1,17 @@
+{
+  "name": "source",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Este é um bot para WhatsApp criado com [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js), que oferece:",
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.28.0"
+  },
+  "devDependencies": {}
+}
