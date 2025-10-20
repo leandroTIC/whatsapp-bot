@@ -1,12 +1,10 @@
 services:
   - name: whatsapp-bot
-    type: web   # Pode ser web ou worker; worker não expõe porta
+    type: worker
     env: docker
     plan: free
-    autoDeploy: true
     source:
       type: git
-      repositoryUrl: https://github.com/leandroTIC/whatsapp-bot.git
+      repository: https://github.com/leandroTIC/whatsapp-bot.git
       branch: main
-    buildCommand: ""      # Dockerfile cuida do build
-    startCommand: ""      # Dockerfile cuida do start
+    autoDeploy: true
