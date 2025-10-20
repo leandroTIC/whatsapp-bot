@@ -7,6 +7,7 @@ const client = new Client({
         // se estiver usando disco persistente (Railway, plano pago do Render)
         dataPath: './session'
     }),
+
     puppeteer: {
         headless: true,
         args: [
