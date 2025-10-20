@@ -1,15 +1,25 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const Message = require('./messages');
+const express = require("express");
+const { Client, LocalAuth } = require("whatsapp-web.js");
+const qrcode = require("qrcode-terminal");
+const Message = require("./messages");
 
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// 🔹 Servidor web para manter o bot vivo no Koyeb
+app.get("/", (req, res) => {
+    res.send("🤖 Bot WhatsApp está online no Koyeb!");
+});
+app.listen(PORT, () => console.log(`🌐 Servidor rodando na porta ${PORT}`));
+
+// 🔹 Inicializa o cliente WhatsApp
 const client = new Client({
     authStrategy: new LocalAuth({
-        // se estiver usando disco persistente (Railway, plano pago do Render)
         dataPath: './session'
     }),
-
     puppeteer: {
         headless: true,
+        executablePath: '/usr/bin/google-chrome', // Koyeb usa imagem com Chrome
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -23,16 +33,14 @@ const client = new Client({
     }
 });
 
-// 🔸 Este evento mostra o QR Code no terminal do Render/Railway
-client.on('qr', (qr) => {
+client.on("qr", (qr) => {
     console.clear();
-    console.log('📲 Escaneie este QR Code com o WhatsApp do número desejado:');
-    qrcode.generate(qr, { small: true });  // <- Mostra no terminal
+    console.log("📲 Escaneie este QR Code com o WhatsApp:");
+    qrcode.generate(qr, { small: true });
 });
 
-// Quando a conexão for bem-sucedida
-client.once('ready', () => {
-    console.log('✅ Bot conectado com sucesso!');
+client.once("ready", () => {
+    console.log("✅ Bot conectado com sucesso!");
 });
 
 client.initialize();
