@@ -6,7 +6,3 @@ services:
     buildCommand: "npm install"
     startCommand: "npm start"
     autoDeploy: true
-    disk:
-      name: wwebjs_auth
-      mountPath: /data
-      sizeGB: 1
