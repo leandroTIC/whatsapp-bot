@@ -1,16 +1,12 @@
 services:
-  - type: worker
-    name: whatsapp-bot
-    env: node
+  - name: whatsapp-bot
+    type: web   # Pode ser web ou worker; worker não expõe porta
+    env: docker
     plan: free
-    buildCommand: "npm install"
-    startCommand: "npm start"
-    workDir: "."
     autoDeploy: true
-    envVars:
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-        value: "true"
-      - key: NODE_ENV
-        value: "production"
-      - key: SESSION_PATH
-        value: "./session"
+    source:
+      type: git
+      repositoryUrl: https://github.com/leandroTIC/whatsapp-bot.git
+      branch: main
+    buildCommand: ""      # Dockerfile cuida do build
+    startCommand: ""      # Dockerfile cuida do start
