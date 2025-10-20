@@ -1,4 +1,4 @@
-# Usa Node oficial
+# Node.js oficial
 FROM node:22-bullseye-slim
 
 # Instala dependências do Chromium
@@ -38,7 +38,6 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     fonts-liberation \
     libappindicator1 \
-    libnss3 \
     lsb-release \
     xdg-utils \
     wget \
@@ -47,7 +46,7 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
-# Diretório do app
+# Diretório da aplicação
 WORKDIR /usr/src/app
 
 # Copia package.json e package-lock.json
@@ -59,8 +58,8 @@ RUN npm install
 # Copia o restante do projeto
 COPY . .
 
-# Expõe porta (opcional, não usado pelo bot)
+# Expõe porta (opcional)
 EXPOSE 3000
 
-# Comando para iniciar
+# Comando de start
 CMD ["node", "main.js"]
